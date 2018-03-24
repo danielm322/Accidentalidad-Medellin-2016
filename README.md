@@ -20,6 +20,9 @@ Se utilizaron los paquetes
 - Analisis Accidentalidad.Rmd: Contiene el RMarkdown para crear el PDF de Análisis Accidentalidad
 - Geoloclaizacion Accidentalidad: Contiene el RMarkdown para crea una web con los analisis geográficos.
 
+La geolocalización de Accidentes puede encontrarse en este link:
+http://rpubs.com/danielm322/372929
+
 ## Autor
 
 * **Daniel Montoya Vásquez** - *Estudiante de física* - [GitHub](https://github.com/danielm322)
