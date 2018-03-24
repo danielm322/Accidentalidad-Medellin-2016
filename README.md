@@ -4,7 +4,7 @@ El presente trabajo tuvo como objetivo acercarse a los datos de movilidad dispon
 
 ## Para correr los análisis
 
-Los análisis fueron realizados en RStudio 1.1.442, una version de R 3.4.4. El archivo PDF se realizó utilizando RMarkdown en RStudio. Para una visualización óptima se recomienda utilizar las mismas versiones del software, y paquetes actualizados.
+Los análisis fueron realizados en RStudio 1.1.442, una version de R 3.4.4. El archivo PDF se realizó utilizando RMarkdown en RStudio. Para una visualización óptima se recomienda utilizar las mismas versiones del software, y paquetes actualizados. No se requiere descargar bases de datos, puesto que cada uno de los archivos toma los datos de internet, por tanto se requiere coneccion a Internet para correr todos los archivos.
 
 ### Paquetes requeridos
 
@@ -14,6 +14,11 @@ Se utilizaron los paquetes
 - plyr
 - lubridate
 - reshape2
+
+### Archivos
+- Accidents.R: Contiene todos los análisis y procesamiento de datos
+- Analisis Accidentalidad.Rmd: Contiene el RMarkdown para crear el PDF de Análisis Accidentalidad
+- Geoloclaizacion Accidentalidad: Contiene el RMarkdown para crea una web con los analisis geográficos.
 
 ## Autor
 
