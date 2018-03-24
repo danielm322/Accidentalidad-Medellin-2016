@@ -1,4 +1,4 @@
-setwd("D:/Dropbox/Daniel/Fisica/S8/AI/Movilidad/")
+# setwd("D:/Dropbox/Daniel/Fisica/S8/AI/Movilidad/")
 
 # Loading libraries:
 # We check if each library is installed, then loads it
@@ -40,9 +40,6 @@ for (i in 1:ncol(data16)){
 # nothing in it
 }
 rm(i) # Removing the indexer of the cycle
-#data16[grep("In",data16$COMUNA),]
-#data16[grep("AU",data16$COMUNA),]
-#data16[grep("Corregimiento de San Cristóbal",data16$COMUNA),]
 
 # Checking for missing values:
 sum(is.na(data16))
@@ -94,7 +91,6 @@ length(unique(data16$PERIODO))
 # We can see the columns "OBJECTID", "RADICADO", "DIRECCION_", "PERIODO"
 # do not have valuable information, so they can be deleted
 data16 <- subset(data16, select = -c(OBJECTID,RADICADO,PERIODO,DIRECCION_))
-
 
 
 #############################
@@ -211,15 +207,6 @@ data16$Y <- gsub(",",".",data16$Y)
 data16$X <- as.numeric(data16$X)
 data16$Y <- as.numeric(data16$Y)
 
-# ggplot(data16, aes(x=X,y=Y, color=factor(GRAVEDAD))) + geom_point(alpha=0.1)
-
-#ggplot(data=subset(data16,GRAVEDAD!="MUERTO"), aes(x=X,y=Y)) + 
-#    geom_point(aes(colour=factor(GRAVEDAD)),alpha=0.3,size=0.8) +
-#    geom_point(data=subset(data16,GRAVEDAD=="MUERTO"),
-#               aes(X,Y,colour="MUERTO"),colour="Red") +
-#    scale_color_manual(values=c("Blue", "Green"))
-
-
 
 # Map for death accidents:
 icon.m <- makeAwesomeIcon(icon= 'flag', markerColor = 'red', iconColor = 'black')
@@ -332,10 +319,6 @@ mes <- subset(mes, Var1!="Dec")
 mes <- subset(mes, Var1!="Jul")
 chisq.test(mes$Freq)
 rm(mes)
-
-
-# data16$DATE_TIME <- as.POSIXct(data16$DATE_TIME, format="%Y-%m-%d %I:%M %p")
-
 
 
 
@@ -495,6 +478,8 @@ detach(C_G_NM)
 rm(C_G_NM)
 
 
+
+# Chisq test to compare uniform distributions
 bins <- as.data.frame(as.numeric(as.integer(runif(42000,1,12))))
 names(bins) <- "n"
 ggplot(data=bins, aes(bins$n)) + geom_bar()
