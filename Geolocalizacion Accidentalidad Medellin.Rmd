@@ -1,0 +1,90 @@
+---
+title: "Geolocalización Accidentalidad Medellín 2016"
+author: "Daniel Montoya"
+date: "23 de marzo de 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE, message=F}
+knitr::opts_chunk$set(echo = F)
+library(leaflet)
+```
+
+# Geolocalización Accidentalidad Medellín
+
+A continuacion se presenta la localizacion de accidentes en Medellín durante el año 2016 mediante clustering geolocalizado. Al pasar el puntero del mouse sobre un cluster se muestra la zona que incluye. El numero sobre el cluster indica la cantidad de accidentes dentro de él. Al hacer clic sobre un cluster, se hace zoom para visualizar la zona deseada.
+
+## Accidentes con muertos:
+
+```{r,cache=T,include=FALSE}
+url16 <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vQMIfSQcls5PxV6OhU3C0hjXb39Dv4l0s9Vtz1T7KLvF21pLjTZH4PDAjXrsdSL3R2eV_UjFQCJ0jFs/pub?gid=1693786413&single=true&output=csv"
+# Making the data an R dataframe
+data16 <- read.csv(url16, fileEncoding = "UTF-8")
+rm(url16) # Removes link from memory
+
+#######################################################################
+# MISSING DATA ANLYSIS
+######################
+# We need to set any empty entry as missing data:
+for (i in 1:ncol(data16)){
+    data16[,i] <- gsub("^$",NA,data16[,i]) 
+# "^$" Is a regular expression indicating that the field begins and ends with
+# nothing in it
+}
+rm(i) # Removing the indexer of the cycle
+
+# Eliminating rows with missing data on these variables
+data16 <- data16[-which(is.na(data16$BARRIO)),]
+data16 <- data16[-which(is.na(data16$CLASE)),]
+data16 <- subset(data16, select = -c(OBJECTID,RADICADO,PERIODO,DIRECCION_))
+data16 <- subset(data16,select = -TIPO_GEOCO)
+data16 <- subset(data16,select = -DIRECCION)
+data16 <- subset(data16, select = -c(CBML))
+
+# We need to change commas for periods in order to use these data as numeric:
+data16$X <- gsub(",",".",data16$X)
+data16$Y <- gsub(",",".",data16$Y)
+data16$X <- as.numeric(data16$X)
+data16$Y <- as.numeric(data16$Y)
+
+# Map for death accidents:
+icon.m <- makeAwesomeIcon(icon= 'flag', markerColor = 'red', iconColor = 'black')
+mapm <- leaflet() %>% addTiles() %>%
+    addAwesomeMarkers(
+        lng=subset(data16,GRAVEDAD=="MUERTO")$X,
+        lat=subset(data16,GRAVEDAD=="MUERTO")$Y,
+        label='MUERTO',
+        icon = icon.m,
+        clusterOptions = markerClusterOptions())
+
+```
+
+```{r}
+mapm
+rm(icon.m,mapm)
+```
+
+## Accidentes con Heridos y solo daños:
+
+```{r}
+# Map for hurts and damages:
+icon.h <- makeAwesomeIcon(icon = 'flag', markerColor = 'purple', iconColor = 'black')
+icon.d <- makeAwesomeIcon(icon = 'flag', markerColor = 'blue')
+
+map2 <- leaflet() %>% addTiles() %>%
+    addAwesomeMarkers(
+        lng=subset(data16,GRAVEDAD=="HERIDO")$X,
+        lat=subset(data16,GRAVEDAD=="HERIDO")$Y,
+        label='HERIDO',
+        icon = icon.h,
+        clusterOptions = markerClusterOptions())
+map2 <- map2 %>% addTiles() %>%
+    addAwesomeMarkers(
+        lng=subset(data16,GRAVEDAD=="SOLO DAÑOS")$X,
+        lat=subset(data16,GRAVEDAD=="SOLO DAÑOS")$Y,
+        label='DAÑOS',
+        icon = icon.d,
+        clusterOptions = markerClusterOptions())
+map2
+```
+

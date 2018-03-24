@@ -1,0 +1,410 @@
+---
+title: "Movilidad Medellín: Accidentalidad en 2016"
+author: "Daniel Montoya CC: 1.128.414.907"
+date: "21 de marzo de 2018"
+output: pdf_document
+fontsize: 12pt
+---
+
+```{r setup, include=FALSE,message=F}
+knitr::opts_chunk$set(echo = F,fig.height=3,fig.width=4.5,fig.align='center')
+library(ggplot2)
+library(leaflet)
+library(lubridate)
+library(plyr)
+```
+
+# 1. Resumen
+
+El presente trabajo tuvo como objetivo acercarse a los datos de movilidad disponibles en Medellín, para aportar en conocimiento que sirva para tomar acciones que mitiguen los problemas de accidentalidad de la ciudad. Se realizaron análisis descriptivos sobre accidentalidad, y análisis bivariados cruzando variables de interés. Se encuentran resultados respecto a qué días, horas, barrios y comunas se relacionan con cantidades de accidentes y la gravedad de dichos accidentes. Se incluye un analisis con geolocalizacion con la gravedad y cantidad de accidentes en Medellín. En cada sección se dan recomendaciones con base en la información obtenida.
+
+# 2. Introducción
+
+Un reto que tienen las ciudades es la movilidad de la gente que las habita[1]. Gran parte de esta movilidad se da en vehículos motorizados. Un problema que enfrenta constantemente la movilidad en vehiculos es el de accidentalidad, pues en los accidentes se presentan diversas consecuencias negativas como daños materiales, heridas a humanos o animales, y muertes, además en general los accidentes generan obstaculizacion de las vías, con lo cual se incrementan las dificultades para movilizarse. Por esto, tomar acciones que busquen reducir la accidentalidad es necesario, y estas decisiones deben tomarse con base en conocimiento del fenómeno [2]. 
+
+En este documento se analizan los datos de accidentalidad en Medellín en 2016. se comienza por un análisis exploratorio, y luego se hacen analisis bivariados. Las preguntas que se buscan responder son: Hay días, horas, y lugares que se relacionan con mayores tasas de accidentalidad y mortalidad?. En cada sección se anotan observaciones que pueden ser de utilidad para las autoridades de la ciudad.
+
+# 3. Análisis de resultados
+## 3.1 Análisis exploratorio
+
+Primero comenzaremos por conocer la base de datos y cómo se distribuyen cada uno de los datos en ella. La base de datos original tiene 42841 entradas, es decir, esta es la cantidad de accidentes registrados en el año. Esto implica un promedio de 117.3 accidentes diarios en la ciudad. Para cada accidente se tienen las variables: Localización geográfica (coordenadas latitud y longitud), Radicado, Fecha, Hora, Dia, Clase, Direccion, CBML, Tipo de geocodificación, Gravedad, Barrio, Comuna, y Diseño.
+
+De estas variables no son de particular interés el Radicado, CBML, tipo de geocodificacion, y dirección, pues Radicado, tipo de geocodificacion y CBML son códigos administrativos de identificacion del accidente. La dirección se hace poco importante al contar con las coordenadas geográficas de cada accidente.
+
+Comenzaremos por un analisis exploratorio de la distribucion de las demás variables.
+
+```{r, echo=F,include=F, cache=T}
+url16 <- "https://docs.google.com/spreadsheets/d/e/2PACX-1vQMIfSQcls5PxV6OhU3C0hjXb39Dv4l0s9Vtz1T7KLvF21pLjTZH4PDAjXrsdSL3R2eV_UjFQCJ0jFs/pub?gid=1693786413&single=true&output=csv"
+# Making the data an R dataframe
+data16 <- read.csv(url16, fileEncoding = "UTF-8")
+rm(url16) # Removes link from memory
+
+#######################################################################
+# MISSING DATA ANLYSIS
+######################
+# We need to set any empty entry as missing data:
+for (i in 1:ncol(data16)){
+    data16[,i] <- gsub("^$",NA,data16[,i]) 
+# "^$" Is a regular expression indicating that the field begins and ends with
+# nothing in it
+}
+rm(i) # Removing the indexer of the cycle
+
+# Eliminating rows with missing data on these variables
+data16 <- data16[-which(is.na(data16$BARRIO)),]
+data16 <- data16[-which(is.na(data16$CLASE)),]
+data16 <- subset(data16, select = -c(OBJECTID,RADICADO,PERIODO,DIRECCION_))
+data16 <- subset(data16,select = -TIPO_GEOCO)
+data16 <- subset(data16,select = -DIRECCION)
+data16 <- subset(data16, select = -c(CBML))
+
+# Checking the varaible "CLASE"
+# One class is repeated so let us join the classes "Caida de ocupante"
+data16$CLASE <- sub("Caída de Ocupante", "Caida Ocupante", data16$CLASE)
+clases <- as.data.frame(table(data16$CLASE))
+clases$perc <- round(clases$Freq*100/nrow(data16),1)
+```
+
+### 3.1.1 Variable: Dia
+
+```{r,fig.height=3,fig.width=5.5}
+#############################
+# Checking the variable "DIA"
+dia <- as.data.frame(table(data16$DIA))
+dia$perc <- round(dia$Freq*100/nrow(data16),1)
+attach(dia)
+ggplot(dia,aes(x=reorder(Var1,-Freq),y=Freq)) + geom_bar(stat = "identity",fill="steelblue") +
+    labs(title="Frecuencia de accidentes por día 2016",x="Dia", y = "Frecuencia",size=2.1) +
+    geom_text(aes(label=paste0(Freq," = ",perc,"%")), vjust=1.6, color="white", size=2.4)
+# Clearly, there are less accidents on sundays
+detach(dia)
+rm(dia)
+```
+
+Vemos que el viernes presenta mayor accidentalidad, aunque la frecuencia parece estar distribuida de manera uniforme, excepto por el domingo, día en el cual se presenta menor accidentalidad. Esta diferencia es significativa, como lo respalda la prueba Chi cuadrado ($\chi^{2} =923.02$, df=6, p<0.001). Este se puede considerar como un resultado esperado, pues tradicionalmente el domingo es un día de descanso, donde menos personas se desplazan a lugares de estudio o trabajo.
+
+### 3.1.1 Variable: Mes
+
+```{r}
+# Let us clean the dates:
+data16$FECHA <- sub("T00:00:00.000Z","",data16$FECHA)
+# Now let us join this column with the hour to make a date-time column:
+data16$DATE_TIME <- paste(data16$FECHA,data16$HORA)
+# Now let us convert these dates into date format:
+
+data16$DATE_TIME <- ymd_hm(data16$DATE_TIME, tz="America/Bogota")
+data16$HORA <- hour(data16$DATE_TIME)
+
+# Plotting how the frequencies behave per month:
+data16$MES <- month(data16$DATE_TIME,label = T)
+mes <- as.data.frame(table(data16$MES))
+mes$perc <- round(mes$Freq*100/nrow(data16),1)
+levels(mes$Var1) <- rev(levels(mes$Var1))
+ggplot(mes,aes(x=Var1,y=Freq)) + geom_bar(stat = "identity",fill="steelblue") +
+    labs(title="Frecuencia de accidentes por mes 2016",x="Mes", y = "Frecuencia") +
+    geom_text(aes(label=paste0(Freq," = ",perc,"%")), hjust=1.1, color="white", size=4) +
+    coord_flip()
+rm(mes)
+```
+
+Vemos que la frecuencia por mes presenta tambien una distribucion aproximadamente uniforme, con picos altos en mayo y marzo, y picos bajos en julio y diciembre. Esto puede estar relacionado también con el hecho de que diciembre y julio son tradicionalmente meses de vacaciones, con menos personas yendo a estudiar. Lo que parece menos esperable son los picos altos, sin embargo puede que dichas fluctuaciones se deban simplemente al azar. Esta hipótesis se descarta debido a que al aplicar la prueba Chi cuadrado, se encuentra que esta alcanza significancia ($\chi^{2} =155.16$, df=11, p<0.001). Por tanto las diferencias entre meses no se deben simplemente al azar. Aun excluyendo los meses de Diciembre y Julio, la prueba Chi cuadrado alcanza significancia ($\chi^{2} =44.293$, df=9, p<0.001). Por tanto entre los otros meses las fluctuaciones no parecen ser debidas solo al azar. 
+
+### 3.1.3 Variable: Hora
+```{r}
+horas <- as.data.frame(table(data16$HORA))
+horas$perc <- round(horas$Freq*100/nrow(data16),1)
+# Grouping by pairs of hours:
+horas2 <- data.frame(Var1=paste0(horas$Var1[1],"-",horas$Var1[2]),
+                     Freq=horas$Freq[1]+horas$Freq[2])
+for (i in seq(3,23,2)){
+    horas2 <- rbind(horas2, data.frame(Var1=paste0(horas$Var1[i],"-",horas$Var1[i+1]),
+                                       Freq=horas$Freq[i]+horas$Freq[i+1]))
+}
+rm(i)
+horas2$perc <- round(horas2$Freq*100/nrow(data16),1)
+
+attach(horas2)
+ggplot(horas2,aes(x=Var1,y=Freq)) + geom_bar(stat = "identity",fill="steelblue") +
+    labs(title="Frecuencia de accidentes por hora 2016",x="Hora", y = "Frecuencia") +
+    geom_text(aes(label=paste0(Freq," = ",perc,"%")), hjust=ifelse(Freq<1500,-0.1,1.05), color=ifelse(Freq<1500,"black","white"), size=4) +
+    coord_flip()
+detach(horas2)
+rm(horas,horas2)
+```
+
+Se puede apreciar que las horas de mayor accidentalidad son las de la tarde, con un máximo entre 4 y 6 p.m.. Se observa un segundo pico entre 6 y 7 a.m., se puede decir que el resultado es esperado, pues estos máximos corresponden a las horas pico.
+
+### 3.1.4 Variable: Barrio
+```{r,fig.height=5}
+##############################
+# Checking the variable "BARRIO"
+# Checking the most common neighborhoods:
+barrio <- head(as.data.frame(sort(table(data16$BARRIO),decreasing = T)),30)
+barrio$perc <- round(barrio$Freq*100/nrow(data16),1)
+ggplot(barrio,aes(x=reorder(Var1,Freq),y=Freq)) + geom_bar(stat = "identity",fill="steelblue") +
+    labs(title="Frecuencia de accidentes por barrio 2016",x="Barrio", y = "Frecuencia") +
+    geom_text(aes(label=paste0(Freq," = ",perc,"%")), hjust=1.1, color="white", size=2.8) + 
+    coord_flip()
+rm(barrio)
+```
+
+Como Medellín tiene 312 barrios, no es conveniente mostrarlos todos en un gráfico, por tanto se seleccionaron los 30 barrios con mayor accidentalidad. En primer lugar se encuentra el barrio La Candelaria, que corresponde al centro de Medellín. Luego se enceuntra el barrio Perpetuo Socorro que corresponde a la zona entre las calles 30 y 33, y la avenida oriental y la avenida del rio. El barrio Caribe es el que comprende entre la Universidad Nacional y la terminal de transporte del norte.
+
+### 3.1.5 Variable: Comuna
+```{r,fig.height=3.5,fig.width=5.8}
+#############################
+# Checking the variable "COMUNA"
+# Checking most common comunas
+comuna <- head(as.data.frame(sort(table(data16$COMUNA),decreasing = T)),20)
+comuna$perc <- round(comuna$Freq*100/nrow(data16),1)
+attach(comuna)
+ggplot(comuna,aes(x=reorder(Var1,Freq),y=Freq)) + geom_bar(stat = "identity",fill="steelblue") +
+    labs(title="Frecuencia de accidentes por comuna",x="Comuna", y = "Frecuencia") +
+    geom_text(aes(x=Var1,y=Freq,label=paste0(Freq," = ",perc,"%")), hjust=ifelse(Freq<2500,-0.1,1.1), color=ifelse(Freq<2500,"black","white"), size=2.5) +
+    coord_flip()
+detach(comuna)
+```
+
+Vemos que la comuna con mayor accidentalidad es La Candelaria, como era de esperarse, pues corresponde a las zonas alrededor del centro de Medellín. A continuación se encuentran Laureles, Castilla y El Poblado. Las comunas con menor accidentalidad son los corregimientos de la ciudad.
+
+### 3.1.6 Variable: Gravedad
+
+```{r,fig.height=3,fig.width=4.5,fig.align='center'}
+#############################
+# Checking the variable "GRAVEDAD"
+gravedad <- as.data.frame(table(data16$GRAVEDAD))
+gravedad$perc <- round(gravedad$Freq*100/nrow(data16),1)
+attach(gravedad)
+ggplot(gravedad,aes(x=reorder(Var1,-Freq),y=Freq)) + geom_bar(stat = "identity",fill="steelblue") +
+    labs(title="Frecuencia de accidentes por gravedad 2016",x="Gravedad", y = "Frecuencia") +
+    geom_text(aes(label=paste0(Freq," = ",perc,"%")), vjust=ifelse(Freq<500,-0.1,1.1), color=ifelse(Freq<4900,"black","white"), size=3.5)
+detach(gravedad)
+rm(gravedad)
+```
+
+Este gráfico nos indica que la gran mayoria de accidentes tienen como consecuencia daños materiales, y heridas, mientras que la muerte es una consecuencia que se da en alredeor del 0.5% de los casos. Sin embargo, por ser la consecuencia de mayor gravedad, esta variable es importante en el análisis. Igualmente importante es destacar que la mayoria de accidentes presentan heridos, por lo cual se debe indagar por la causa de las heridas en los accidentes, para saber si es posible mejorar la seguridad de vehiculos o infraestructura vial. Adicionalmente, sería interesante conocer la cantidad de muertos, heridos, y un estimativo del valor de los costos de daños en los accidentes para hacer análisis con estos datos también.
+
+
+### 3.1.7 Variable: Diseño
+```{r}
+##############################
+# Checking the variable "DISEÑO"
+diseno <- as.data.frame(sort(table(data16$DISENO), decreasing = T))
+diseno$perc <- round(diseno$Freq*100/nrow(data16),1)
+attach(diseno)
+ggplot(diseno,aes(x=reorder(Var1,Freq),y=Freq)) + geom_bar(stat = "identity",fill="steelblue") +
+    labs(title="Frecuencia de accidentes por diseño 2016",x="Diseño", y = "Frecuencia") +
+    geom_text(aes(label=paste0(Freq," = ",perc,"%")), hjust=ifelse(Freq<30000,-0.1,1.1), color=ifelse(Freq<30000,"black","white"), size=3.5) +
+    coord_flip()
+detach(diseno)
+rm(diseno)
+# Diseño doesn't seem very useful since the most common value represents 80% of the variable
+data16 <- subset(data16, select = -DISENO)
+```
+
+Esta variable se refiere al sitio de la vía donde ocurrió el incidente. Vemos que ésta  no presenta mucha variabilidad, pues el valor más común abarca cerca del 80% del total de los datos.
+
+### 3.1.8 Variable: Clase
+
+```{r,fig.width=4.7}
+attach(clases)
+ggplot(clases,aes(x=reorder(Var1,Freq),y=Freq)) + geom_bar(stat = "identity",fill="steelblue") +
+    labs(title="Frecuencia de accidentes por clase 2016",x="Clase", y = "Frecuencia") +
+    geom_text(aes(label=paste0(Freq," = ",perc,"%")), hjust=ifelse(Freq<5000,-0.1,1.1), color=ifelse(Freq<28000,"black","white"), size=3.5) +
+    coord_flip()
+
+detach(clases)
+rm(clases)
+```
+
+Vemos que la variable "clase" se refiere al tipo de accidente, en esta la mayoria son choque, seguido de la clase "Otra clase". Esta variable podría ser más útil si se descompusiera la categoría "otra clase" en varias de sus subclases pues esta es la segunda en frecuencia.
+
+### 3.1.9 Variable: Geolocalización
+
+Para esta variable, en este link: [http://rpubs.com/danielm322/372929] se podrá encontrar un mapa interactivo con clustering geolocalizado para conocer las localizaciones de accidentes con muertes y accidentes de heridos y solo daños. 
+
+En estos mapas, se evidencia que gran cantidad de accidentes con muertos se dan en las vías regional sur y norte, cerca a las zonas centrales. Así mismo, el centro es un lugar de alta densidad de accidentes con muertes.
+
+## 3.2 Análisis bivariado
+
+En esta sección se cruzan variables para conocer con mayor detalle el comportamiento de la variable gravedad del accidente según meses, días, horas, y comunas.
+
+### 3.2.1 Gravedad por mes
+```{r}
+M_G_M <- count(subset(data16,GRAVEDAD=="MUERTO"), c("MES","GRAVEDAD"))
+M_G_M$perc <- round(M_G_M$freq*100/sum(M_G_M$freq),1)
+levels(M_G_M$MES) <- rev(levels(M_G_M$MES))
+# M_G$perc <- round(M_G$freq*100/nrow(data16),2) # count percents
+ggplot(data = M_G_M, aes(x=MES,y=freq)) + 
+  geom_bar(stat="identity",position=position_dodge()) + 
+  geom_text(aes(label=paste0(freq," = ",perc,"%")), hjust=1.1, color="white", size=4) +
+  labs(title="Frecuencia de muertes en accidentes por mes",x="Mes", y = "Frecuencia") +
+  coord_flip()
+rm(M_G_M)
+```
+
+A pesar de que la distribución de muertes por mes a simple vista no parece uniforme, las fluctuaciones parecen ser debidas al azar, pues al comparar esta gráfica con las de distribuciones uniformes generadas aleatoriamente, se encuentra que son muy similares. Adicionalmente, al aplicar la prueba Chi cuadrado se observa que la prueba no alcanza significancia ($\chi^{2} =16.322$, df=11, p=0.1296) Por tanto no es posible concluir que haya meses que presenten diferencias significativas con otros meses en cuanto a esta variable. 
+
+```{r,fig.height=3.5,fig.width=5.5}
+# No muertes
+M_G_NM <- count(subset(data16,GRAVEDAD!="MUERTO"), c("MES","GRAVEDAD"))
+M_G_NM$perc <- round(M_G_NM$freq*100/sum(M_G_NM$freq),1)
+levels(M_G_NM$MES) <- rev(levels(M_G_NM$MES))
+attach(M_G_NM)
+ggplot(data = M_G_NM, aes(x=MES,y=freq,fill=GRAVEDAD)) + 
+  geom_bar(stat="identity",position=position_dodge()) + 
+  geom_text(aes(label=paste0(freq," = ",perc,"%")), hjust=1.1, vjust=ifelse(GRAVEDAD=="HERIDO",1.1,-0.4), color="white", size=2.5) +
+  labs(title="Frecuencia de heridos y daños en accidentes por mes 2016",x="Mes", y = "Frecuencia") +
+  coord_flip()
+detach(M_G_NM)
+rm(M_G_NM)
+```
+
+La variable de accidentes con herido y solo daños materiales tambien parece seguir una distribucion uniforme, excepto por el mes de diciembre. En este mes se presentan menores accidentes de estos tipos. Las diferencias son significativas, como es indicado por el resultado de la prueba Chi cuadrado de Pearson ($\chi^{2} = 52.337$, df=11, p<2.3e-7). Es posible que se relacione que con el hecho de que es un mes de vacaciones escolares. Cruzando esta informacion con la de otras bases de datos, como la de aforos, puede saberse si en este mes tambien hay menos flujo vehicular, con lo cual se apoyaría la validez de esta hipótesis.
+
+### 3.2.2 Gravedad por día
+```{r,fig.height=2.5,fig.width=5}
+###############
+# DIA
+# Muertes
+D_G_M <- count(subset(data16,GRAVEDAD=="MUERTO"), c("DIA","GRAVEDAD"))
+D_G_M$perc <- round(D_G_M$freq*100/sum(D_G_M$freq),1)
+# M_G$perc <- round(M_G$freq*100/nrow(data16),2) # count percents
+ggplot(data = D_G_M, aes(x=DIA,y=freq)) + 
+  geom_bar(stat="identity",position=position_dodge()) + 
+  geom_text(aes(label=paste0(freq," = ",perc,"%")), hjust=1.1, color="white", size=4) +
+  labs(title="Frecuencia de muertes en accidentes por día",x="Dia", y = "Frecuencia") +
+  coord_flip()
+rm(D_G_M)
+```
+
+Las frecuencias de muertes por día no parecen seguir una distribucion uniforme, con un máximo el lunes. Las diferencias son significativas, segun indicado por la prueba Chi cuadrado ($\chi^{2} = 22.335$, df=6, p=0.001). Sin embargo el nivel de significancia no es muy alto, por lo que no parece sensato descartar que las diferencias entre días se deban al azar.
+
+```{r,fig.width=5.5}
+#No muertes
+D_G_NM <- count(subset(data16,GRAVEDAD!="MUERTO"), c("DIA","GRAVEDAD"))
+D_G_NM$perc <- round(D_G_NM$freq*100/sum(D_G_NM$freq),1)
+attach(D_G_NM)
+ggplot(data = D_G_NM, aes(x=DIA,y=freq,fill=GRAVEDAD)) + 
+  geom_bar(stat="identity",position=position_dodge()) + 
+  geom_text(aes(label=paste0(freq," = ",perc,"%")), hjust=1.1, vjust=ifelse(GRAVEDAD=="HERIDO",1.2,-0.4), color="white", size=3.1) +
+  labs(title="Frecuencia de heridos y daños en accidentes por día",x="Dia", y = "Frecuencia") +
+  coord_flip()
+detach(D_G_NM)
+rm(D_G_NM)
+```
+
+En Diciembre se presentan menores frecuencias de accidentes con muertos y daños. Se encuentran diferencias significativas entre meses según prueba Chi cuadrado ($\chi^{2} = 183.41$, df=6, p<2.2e-16). Por tanto no se pueden considerar como debidas al azar las diferencias entre meses. De nuevo, es importante destacar que las frecuecias de accidentes con heridos son mayores que las de accidentes con daños materiales, lo cual invita a indagar por las causas de heridas en dichos accidentes, para mejorar la seguridad de los vehiculos, o infraestructura vial.
+
+### 3.2.3 Gravedad por hora
+```{r}
+###############
+# HORA
+# Muertes
+H_G_M <- count(subset(data16,GRAVEDAD=="MUERTO"), c("HORA","GRAVEDAD"))
+H_G_M$perc <- round(H_G_M$freq*100/sum(H_G_M$freq),1)
+
+H_G_M2 <- data.frame(HORA=paste0(H_G_M$HORA[1],"-",H_G_M$HORA[2]),
+                     freq=H_G_M$freq[1]+H_G_M$freq[2])
+for (i in seq(3,23,2)){
+  H_G_M2 <- rbind(H_G_M2, data.frame(HORA=paste0(H_G_M$HORA[i],"-",H_G_M$HORA[i+1]),
+                                     freq=H_G_M$freq[i]+H_G_M$freq[i+1]))
+}
+rm(i)
+H_G_M2$perc <- round(H_G_M2$freq*100/sum(H_G_M2$freq),1)
+H_G_M2$GRAVEDAD <- rep("MUERTO",nrow(H_G_M2))
+# M_G$perc <- round(M_G$freq*100/nrow(data16),2) # count percents
+ggplot(data = H_G_M2, aes(x=HORA,y=freq)) + 
+  geom_bar(stat="identity",position=position_dodge()) + 
+  geom_text(aes(label=paste0(freq," = ",perc,"%")), hjust=1.1, color="white", size=4) +
+  labs(title="Frecuencia de muertes en accidentes por hora",x="Hora", y = "Frecuencia") +
+  coord_flip()
+rm(H_G_M,H_G_M2)
+```
+
+Claramente la distribucion de muertes en accidentes según hora no es uniforme, y el pico se encuentra entre las 11 y 12 de la noche, seguido de entre las 6 y 7 p.m. Por esto deben tomarse medidas de control o concientizacion para generar precaucion entre conductores. Entre 6 y 7 p.m. es hora pico, por tanto hay mas flujo vehicular, y mas probabilidades de generar accidentes, sin embargo, entre 11 y 12 de la noche, el flujo vehicular es menor, pero muchas personas pueden haber ingerido bebidas alcohólicas, o simplemente no respetan semáforos o cruces. Esto indica que es necesario prevenir estos accidentes mediante la generacion de conciencia de respetar normas de transito, especialmente a estas horas.
+
+```{r,fig.height=4,fig.width=6}
+#No muertes
+H_G_NM <- count(subset(data16,GRAVEDAD!="MUERTO"), c("HORA","GRAVEDAD"))
+H_G_NM$perc <- round(H_G_NM$freq*100/sum(H_G_NM$freq),1)
+
+H_G_NM2 <- data.frame(HORA=paste0(H_G_NM$HORA[1],"-",H_G_NM$HORA[3]),
+                     freq=H_G_NM$freq[1]+H_G_NM$freq[3],
+                     GRAVEDAD=H_G_NM$GRAVEDAD[1])
+for (i in c(2,5,6,9,10,13,14,17,18,21,22,25,26,29,30,33,34,37,38,41,42,45,46)){
+  H_G_NM2 <- rbind(H_G_NM2, data.frame(HORA=paste0(H_G_NM$HORA[i],"-",H_G_NM$HORA[i+2]),
+                                       freq=H_G_NM$freq[i]+H_G_NM$freq[i+2],
+                                       GRAVEDAD=H_G_NM$GRAVEDAD[i]))
+}
+rm(i)
+H_G_NM2$perc <- round(H_G_NM2$freq*100/sum(H_G_NM2$freq),1)
+
+attach(H_G_NM2)
+ggplot(data = H_G_NM2, aes(x=HORA,y=freq,fill=GRAVEDAD)) + 
+  geom_bar(stat="identity",position=position_dodge()) + 
+  geom_text(aes(label=paste0(freq," = ",perc,"%")), hjust=ifelse(freq<1000,-0.1,1.05), vjust=ifelse(GRAVEDAD=="HERIDO",1.1,-0.2), color=ifelse(freq<1000,"black","white"), size=3) +
+  labs(title="Frecuencia de heridos y daños en accidentes por hora",x="Hora", y = "Frecuencia") +
+  coord_flip()
+detach(H_G_NM2)
+rm(H_G_NM,H_G_NM2)
+```
+
+La distribucion de accidentes con heridos y daños claramente no es uniforme, con un pico de heridos entre 6 y 7 a.m., y segundo pico entre 4 y 5 p.m. El pico en la mañana es tan pronunciado que requiere atencion, ya sea para verificar si este dato es correcto, como para tomar medidas de prevención.
+
+### 3.2.4 Gravedad por comuna
+```{r,fig.height=4,fig.width=6.8}
+###############
+# COMUNA
+# Muertes
+C_G_M <- count(subset(data16,GRAVEDAD=="MUERTO"), c("COMUNA","GRAVEDAD"))
+C_G_M$perc <- round(C_G_M$freq*100/sum(C_G_M$freq),1)
+C_G_M <- arrange(C_G_M,desc(-freq))
+C_G_M <- subset(C_G_M,COMUNA!="In")
+C_G_M$COMUNA <- factor(C_G_M$COMUNA, levels = C_G_M$COMUNA)
+
+attach(C_G_M)
+ggplot(data = C_G_M, aes(x=COMUNA,y=freq)) + 
+  geom_bar(stat="identity",position=position_dodge()) + 
+  geom_text(aes(label=paste0(freq," = ",perc,"%")), hjust=ifelse(freq<13,-0.1,1.05), color=ifelse(freq<13,"black","white"), size=4) +
+  labs(title="Frecuencia de muertes en accidentes por comuna",x="Comuna", y = "Frecuencia") +
+  coord_flip()
+detach(C_G_M)
+rm(C_G_M)
+```
+
+```{r,fig.height=4,fig.width=8}
+#No muertes
+C_G_NM <- count(subset(data16,GRAVEDAD!="MUERTO"), c("COMUNA","GRAVEDAD"))
+C_G_NM$perc <- round(C_G_NM$freq*100/sum(C_G_NM$freq),1)
+C_G_NM <- subset(C_G_NM,COMUNA!="In")
+C_G_NM <- subset(C_G_NM,COMUNA!="0")
+C_G_NM <- subset(C_G_NM,COMUNA!="AU")
+
+attach(C_G_NM)
+ggplot(data = C_G_NM, aes(x=COMUNA,y=freq,fill=GRAVEDAD)) + 
+  geom_bar(stat="identity",position=position_dodge()) + 
+  #geom_text(aes(label=paste0(freq," = ",perc,"%")), hjust=1.1, vjust=ifelse(GRAVEDAD=="HERIDO",1.2,-0.5), color="white", size=3.5) +
+  labs(title="Frecuencia de heridos y daños en accidentes por comuna",x="Comuna", y = "Frecuencia") +
+  coord_flip()
+detach(C_G_NM)
+rm(C_G_NM)
+```
+
+Se observa que la mayoria de accidentes con muertes, heridos y daños materiales suceden en la comuna de la Candelaria, por lo que esta requiere especial atención, además porque la movilidad en esta zona es crucial para el resto de la ciudad. Se destacan la cantidad de heridos en la comuna de Castilla, y de heridos y daños en la comuna de Laureles-Estadio.
+
+# 4. Conclusiones
+
+La mayoría de accidentes en 2016 tuvieron como consecuencia heridos, lo cual invita a indagar por las causas de estas heridas para conocer qué acciones son pertinentes tomar.
+
+Los días viernes se presentan mayores tasas de accidentalidad, y menos los domingos.
+
+Las horas pico generan mayor cantidad de heridos y daños, pero el pico de muertes es entre 11 y 12 p.m.
+
+Las zonas de mayor accidentalidad son las zonas del centro, y las zonas de la autopista norte y sur.
+
+# 5. Bibiografía
+
+[1] MOLLINEDO, Carmen Lizárraga. Movilidad urbana sostenible: un reto para las ciudades del siglo XXI. Economía Sociedad y Territorio, 2006.
+
+[2] ASCHER, François. Ciudades con velocidad y movilidad múltiples: un desafío para los arquitectos, urbanistas y políticos. ARQ (Santiago), 2005, no 60, p. 11-19.
